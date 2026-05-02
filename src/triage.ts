@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync, writeFileSync } from "fs";
-import { Ticket, TriageResult } from "./types";
+import { Ticket, TriageResult } from "./types.js";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
