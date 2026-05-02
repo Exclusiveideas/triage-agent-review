@@ -20,6 +20,8 @@ Before touching the agent itself I added the minimum hygiene the rest of the wor
 
 P1-1: swapped the model from the legacy `claude-opus-4-5` alias to `claude-sonnet-4-6`. The shipped ID still works but the Anthropic docs list it under "Legacy models" as of 2026-05-02, so the agent was quietly running on a non-default tier. Sonnet 4.6 is the docs' recommended speed-and-intelligence default and is roughly 60% the per-token price of Opus, which matters at 5,000/day. Dropping a further tier to Haiku 4.5 is materially cheaper again, but I would not make that quality call unilaterally on a fixture set this small with `tkt_1007` as a known adversarial input; flagged for the team in product questions instead.
 
+P1-2: added an explicit guard for `ANTHROPIC_API_KEY` at startup. The SDK accepts a `string | null | undefined` apiKey and only fails deep inside the first request, which is exactly the kind of slow-failing config bug that wastes time on first run and looks like a network problem in production. A clean `console.error` plus `process.exit(1)` before any network call or file read is the cheap fix the rule (C-6) was asking for.
+
 ### Phase 2: quality and hygiene
 
 (in progress)

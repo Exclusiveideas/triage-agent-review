@@ -2,9 +2,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync, writeFileSync } from "fs";
 import { Ticket, TriageResult } from "./types.js";
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+const apiKey = process.env.ANTHROPIC_API_KEY;
+if (!apiKey) {
+  console.error("ANTHROPIC_API_KEY environment variable is required.");
+  process.exit(1);
+}
+const client = new Anthropic({ apiKey });
 
 const SYSTEM_PROMPT = `You are a support ticket triage agent for a B2B SaaS company.
 
