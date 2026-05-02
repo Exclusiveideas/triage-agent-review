@@ -1,0 +1,28 @@
+# Secrets — ANTHROPIC_API_KEY lives in env, never in the repo.
+.env
+.env.*
+!.env.example
+
+# Dependencies — reproducible from package-lock.json.
+node_modules/
+
+# Run output — may contain customer-derived text; treat as PII-adjacent.
+data/results.json
+data/results.jsonl
+
+# Logs — may capture prompts/responses.
+*.log
+npm-debug.log*
+
+# Build / typecheck artefacts (defensive — no build step today).
+dist/
+build/
+*.tsbuildinfo
+
+# Test coverage (if added in Phase 4).
+coverage/
+
+# Editor / OS detritus.
+.vscode/
+.idea/
+.DS_Store
