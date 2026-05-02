@@ -1,0 +1,17 @@
+{
+  "name": "triage-agent",
+  "version": "0.1.0",
+  "description": "Support ticket triage agent",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/triage.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "@types/node": "^20.0.0"
+  }
+}
