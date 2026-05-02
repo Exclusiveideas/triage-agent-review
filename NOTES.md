@@ -18,7 +18,7 @@ Before touching the agent itself I added the minimum hygiene the rest of the wor
 
 ### Phase 1: critical correctness
 
-(in progress)
+P1-1: swapped the model from the legacy `claude-opus-4-5` alias to `claude-sonnet-4-6`. The shipped ID still works but the Anthropic docs list it under "Legacy models" as of 2026-05-02, so the agent was quietly running on a non-default tier. Sonnet 4.6 is the docs' recommended speed-and-intelligence default and is roughly 60% the per-token price of Opus, which matters at 5,000/day. Dropping a further tier to Haiku 4.5 is materially cheaper again, but I would not make that quality call unilaterally on a fixture set this small with `tkt_1007` as a known adversarial input; flagged for the team in product questions instead.
 
 ### Phase 2: quality and hygiene
 
@@ -42,4 +42,4 @@ Questions I'd want to raise with the team before changing behaviour unilaterally
 
 ## Tools I used
 
-Claude Code as the editor and harness. I'll add anything else here as I actually use it. I plan to use Context7 to verify current Anthropic model IDs against the SDK rather than guessing from memory.
+Claude Code as the editor and harness. Context7 was my first choice for verifying the current Anthropic model IDs against the SDK, per CLAUDE.md AL-2. The MCP server was returning network errors on 2026-05-02 when I needed it for P1-1, so I went to the alternative the rule names: the Anthropic docs at platform.claude.com/docs/en/about-claude/models/overview. The verification date is recorded in the commit body for P1-1. I will add anything else here as I use it.
