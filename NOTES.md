@@ -40,7 +40,7 @@ P1-10: wrapped the ticket subject and body in `<ticket_subject>` / `<ticket_body
 
 ### Phase 2: quality and hygiene
 
-(in progress)
+P2-1: set `temperature: 0` on the `messages.create` call. The SDK's default is calibrated for chat where variance is a feature, but for a classification task (which category, which priority, draft_reply yes-or-no) it is just noise. LLM-3 names the rule. Same input now produces the same triage, which means ops can re-run a disputed ticket and see the same answer, and idempotent reprocessing of the batch returns identical results (a soft cousin of LLM-4 idempotency). One-line change; affects tool-calling decisions as well as the final submit_triage values, which is what we want.
 
 ### Phase 3: scale
 
