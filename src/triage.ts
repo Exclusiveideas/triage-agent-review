@@ -29,6 +29,13 @@ For each ticket, you must:
 Use the lookup_customer tool to check the customer's plan and history before deciding priority.
 Enterprise customers should generally get higher priority than free-tier customers.
 
+A ticket is auto-resolvable (needs_human: false) only when ALL of these conditions hold:
+- The answer can be drawn from the knowledge base results or the customer's plan data. Do not invent product-specific details — UI paths, feature availability, server configuration, time zones, pricing, policies — that aren't in the tools' output.
+- The reply commits the company to nothing: no refunds, no schedule promises, no claims about what features exist.
+- lookup_customer returned a known plan (anything other than "unknown"). Escalate if the plan is "unknown".
+
+Otherwise, set needs_human: true.
+
 Call submit_triage exactly once when you have all the information you need to finalise the ticket. Do not produce a free-text answer.`;
 
 // Keep these in sync with the input_schema fields in `tools` below.
