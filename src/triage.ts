@@ -11,6 +11,7 @@ if (!apiKey) {
 const client = new Anthropic({ apiKey, timeout: 60_000 });
 
 const MAX_ITERATIONS = 10;
+const CONCURRENCY = 5;
 
 const SYSTEM_PROMPT = `You are a support ticket triage agent for a B2B SaaS company.
 
@@ -312,30 +313,38 @@ async function main() {
     readFileSync("./data/tickets.json", "utf-8")
   );
 
-  const results: TriageResult[] = [];
+  const results: TriageResult[] = new Array(tickets.length);
   const RESULTS_JSONL = "./data/results.jsonl";
   writeFileSync(RESULTS_JSONL, "");
 
-  for (const ticket of tickets) {
-    console.error(`Processing ${ticket.id}...`);
-    let result: TriageResult;
-    try {
-      result = await triageTicket(ticket);
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : String(err);
-      const message = raw.length > 500 ? raw.slice(0, 500) + "..." : raw;
-      console.error(`Ticket ${ticket.id} failed: ${message}`);
-      result = {
-        ticket_id: ticket.id,
-        category: "other",
-        priority: "high",
-        needs_human: true,
-        error: `triage_threw:${message}`,
-      };
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= tickets.length) return;
+      const ticket = tickets[i]!;
+      console.error(`Processing ${ticket.id}...`);
+      let result: TriageResult;
+      try {
+        result = await triageTicket(ticket);
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err);
+        const message = raw.length > 500 ? raw.slice(0, 500) + "..." : raw;
+        console.error(`Ticket ${ticket.id} failed: ${message}`);
+        result = {
+          ticket_id: ticket.id,
+          category: "other",
+          priority: "high",
+          needs_human: true,
+          error: `triage_threw:${message}`,
+        };
+      }
+      results[i] = result;
+      appendFileSync(RESULTS_JSONL, JSON.stringify(result) + "\n");
     }
-    results.push(result);
-    appendFileSync(RESULTS_JSONL, JSON.stringify(result) + "\n");
   }
+
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
 
   writeFileSync("./data/results.json", JSON.stringify(results, null, 2));
   console.error(`Processed ${results.length} tickets.`);
