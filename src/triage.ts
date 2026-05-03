@@ -262,8 +262,21 @@ async function main() {
   const results: TriageResult[] = [];
   for (const ticket of tickets) {
     console.log(`Processing ${ticket.id}...`);
-    const result = await triageTicket(ticket);
-    results.push(result);
+    try {
+      const result = await triageTicket(ticket);
+      results.push(result);
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      const message = raw.length > 500 ? raw.slice(0, 500) + "..." : raw;
+      console.error(`Ticket ${ticket.id} failed: ${message}`);
+      results.push({
+        ticket_id: ticket.id,
+        category: "other",
+        priority: "high",
+        needs_human: true,
+        error: `triage_threw:${message}`,
+      });
+    }
   }
 
   writeFileSync("./data/results.json", JSON.stringify(results, null, 2));
