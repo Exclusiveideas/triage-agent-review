@@ -1,16 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { appendFileSync, readFileSync, writeFileSync } from "fs";
+import { fileURLToPath } from "url";
 import { z } from "zod";
 import { CATEGORIES, PRIORITIES, type Ticket, type TriageResult } from "./types.js";
 
-const apiKey = process.env.ANTHROPIC_API_KEY;
-if (!apiKey) {
-  console.error("ANTHROPIC_API_KEY environment variable is required.");
-  process.exit(1);
+function createClient(): Anthropic {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    console.error("ANTHROPIC_API_KEY environment variable is required.");
+    process.exit(1);
+  }
+  return new Anthropic({ apiKey, timeout: 60_000 });
 }
-const client = new Anthropic({ apiKey, timeout: 60_000 });
 
-const MAX_ITERATIONS = 10;
+export const MAX_ITERATIONS = 10;
 const CONCURRENCY = 5;
 
 const SYSTEM_PROMPT = `You are a support ticket triage agent for a B2B SaaS company.
@@ -29,9 +32,9 @@ Enterprise customers should generally get higher priority than free-tier custome
 Call submit_triage exactly once when you have all the information you need to finalise the ticket. Do not produce a free-text answer.`;
 
 // Keep these in sync with the input_schema fields in `tools` below.
-const lookupCustomerInput = z.object({ customer_id: z.string() });
-const searchKnowledgeBaseInput = z.object({ query: z.string() });
-const submitTriageInput = z.discriminatedUnion("needs_human", [
+export const lookupCustomerInput = z.object({ customer_id: z.string() });
+export const searchKnowledgeBaseInput = z.object({ query: z.string() });
+export const submitTriageInput = z.discriminatedUnion("needs_human", [
   z.object({
     needs_human: z.literal(false),
     category: z.enum(CATEGORIES),
@@ -138,7 +141,7 @@ function searchKnowledgeBase(query: string) {
   };
 }
 
-async function dispatchTool(block: Anthropic.ToolUseBlock): Promise<DispatchedTool> {
+export async function dispatchTool(block: Anthropic.ToolUseBlock): Promise<DispatchedTool> {
   if (block.name === "submit_triage") {
     const parsed = submitTriageInput.safeParse(block.input);
     if (parsed.success) {
@@ -191,15 +194,15 @@ async function dispatchTool(block: Anthropic.ToolUseBlock): Promise<DispatchedTo
   };
 }
 
-function escapeDelimiterTags(s: string): string {
+export function escapeDelimiterTags(s: string): string {
   return s.replace(/<\/?ticket_(subject|body)>/gi, "[escaped-tag]");
 }
 
-function failureResult(ticket_id: string, error: string): TriageResult {
+export function failureResult(ticket_id: string, error: string): TriageResult {
   return { ticket_id, category: "other", priority: "high", needs_human: true, error };
 }
 
-async function triageTicket(ticket: Ticket): Promise<TriageResult> {
+export async function triageTicket(ticket: Ticket, client: Anthropic): Promise<TriageResult> {
   const safeSubject = escapeDelimiterTags(ticket.subject);
   const safeBody = escapeDelimiterTags(ticket.body);
   const messages: Anthropic.MessageParam[] = [
@@ -298,6 +301,8 @@ Customer: ${ticket.customer_id}
 }
 
 async function main() {
+  const client = createClient();
+
   const tickets: Ticket[] = JSON.parse(
     readFileSync("./data/tickets.json", "utf-8")
   );
@@ -315,7 +320,7 @@ async function main() {
       console.error(`Processing ${ticket.id}...`);
       let result: TriageResult;
       try {
-        result = await triageTicket(ticket);
+        result = await triageTicket(ticket, client);
       } catch (err) {
         const raw = err instanceof Error ? err.message : String(err);
         const message = raw.length > 500 ? raw.slice(0, 500) + "..." : raw;
@@ -333,4 +338,6 @@ async function main() {
   console.error(`Processed ${results.length} tickets.`);
 }
 
-main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main();
+}
