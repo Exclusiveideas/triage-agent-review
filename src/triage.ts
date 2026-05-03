@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { readFileSync, writeFileSync } from "fs";
+import { appendFileSync, readFileSync, writeFileSync } from "fs";
 import { z } from "zod";
 import { CATEGORIES, PRIORITIES, type Ticket, type TriageResult } from "./types.js";
 
@@ -260,23 +260,28 @@ async function main() {
   );
 
   const results: TriageResult[] = [];
+  const RESULTS_JSONL = "./data/results.jsonl";
+  writeFileSync(RESULTS_JSONL, "");
+
   for (const ticket of tickets) {
     console.log(`Processing ${ticket.id}...`);
+    let result: TriageResult;
     try {
-      const result = await triageTicket(ticket);
-      results.push(result);
+      result = await triageTicket(ticket);
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
       const message = raw.length > 500 ? raw.slice(0, 500) + "..." : raw;
       console.error(`Ticket ${ticket.id} failed: ${message}`);
-      results.push({
+      result = {
         ticket_id: ticket.id,
         category: "other",
         priority: "high",
         needs_human: true,
         error: `triage_threw:${message}`,
-      });
+      };
     }
+    results.push(result);
+    appendFileSync(RESULTS_JSONL, JSON.stringify(result) + "\n");
   }
 
   writeFileSync("./data/results.json", JSON.stringify(results, null, 2));

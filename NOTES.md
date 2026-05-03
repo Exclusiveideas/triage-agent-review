@@ -34,6 +34,8 @@ P1-7: removed `JSON.parse` entirely. The `end_turn` path was the largest single 
 
 P1-8: wrapped each `triageTicket` call in try/catch. After P1-1 through P1-7 the throw surface inside `triageTicket` is essentially "the SDK call itself blew up": every other failure mode now returns a structured `TriageResult`. Without the wrapper, one rejected SDK call mid-batch kills every prior result too because `writeFileSync` runs after the loop, and at 5,000/day that is the difference between "we lost three tickets" and "we lost four thousand." On throw the loop pushes a structured failure record (`error: "triage_threw:<message>"`, capped at 500 chars to keep `results.json` from ballooning at scale and as a defence against any unexpected SDK error shape that includes request context), logs to stderr, and continues. The full failure-mode taxonomy that can land in `error` is now: `max_iterations_exceeded`, `stop_reason:<value>`, `no_submission`, `triage_threw:<message>`.
 
+P1-9: opened `data/results.jsonl` at the top of `main()` and appended one line per ticket as it finishes. P1-8 closed "one bad ticket kills the loop"; P1-9 closes the complementary "process death loses everything in memory." Today `writeFileSync` ran once at the end, so a SIGKILL or OOM at ticket 4,237 lost the prior 4,236. With JSONL streaming, the worst case is losing the in-flight ticket and whatever sits in the kernel write buffer (a few hundred milliseconds; full durability would mean `fsync` per line, which is more latency than worth at 5,000/day for this risk). The pretty `results.json` array still gets written at the end for backwards compatibility with anything that already reads the array form.
+
 ### Phase 2: quality and hygiene
 
 (in progress)
