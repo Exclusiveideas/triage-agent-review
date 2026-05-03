@@ -4,7 +4,7 @@
   "description": "Support ticket triage agent",
   "type": "module",
   "scripts": {
-    "start": "tsx src/triage.ts",
+    "start": "tsx --env-file-if-exists=.env src/triage.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
