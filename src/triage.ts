@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync, writeFileSync } from "fs";
 import { z } from "zod";
-import { Ticket, TriageResult } from "./types.js";
+import { CATEGORIES, PRIORITIES, type Ticket, type TriageResult } from "./types.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 if (!apiKey) {
@@ -23,15 +23,26 @@ For each ticket, you must:
 Use the lookup_customer tool to check the customer's plan and history before deciding priority.
 Enterprise customers should generally get higher priority than free-tier customers.
 
-Return your final answer as JSON.`;
+Call submit_triage exactly once when you have all the information you need to finalise the ticket. Do not produce a free-text answer.`;
 
 // Keep these in sync with the input_schema fields in `tools` below.
 const lookupCustomerInput = z.object({ customer_id: z.string() });
 const searchKnowledgeBaseInput = z.object({ query: z.string() });
+const submitTriageInput = z.object({
+  category: z.enum(CATEGORIES),
+  priority: z.enum(PRIORITIES),
+  needs_human: z.boolean(),
+  draft_reply: z.string().optional(),
+  reasoning: z.string().optional(),
+});
 
 type ToolDispatch = (input: unknown) =>
   | { ok: true; result: unknown }
   | { ok: false; error: string };
+
+type DispatchedTool =
+  | { kind: "tool_result"; result: Anthropic.ToolResultBlockParam }
+  | { kind: "final"; submission: z.infer<typeof submitTriageInput> };
 
 const toolHandlers: Record<string, ToolDispatch> = {
   lookup_customer: (input) => {
@@ -69,6 +80,28 @@ const tools: Anthropic.Tool[] = [
       required: ["query"],
     },
   },
+  {
+    name: "submit_triage",
+    description:
+      "Submit the final triage decision for the ticket. Call this exactly once when you have all the information you need.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: { type: "string", enum: [...CATEGORIES] },
+        priority: { type: "string", enum: [...PRIORITIES] },
+        needs_human: { type: "boolean" },
+        draft_reply: {
+          type: "string",
+          description: "Customer-facing reply text. Required when needs_human is false.",
+        },
+        reasoning: {
+          type: "string",
+          description: "Brief explanation of the choices, useful for ops review.",
+        },
+      },
+      required: ["category", "priority", "needs_human"],
+    },
+  },
 ];
 
 // Mocked — in real life these hit a database
@@ -90,31 +123,56 @@ function searchKnowledgeBase(query: string) {
   };
 }
 
-function dispatchTool(block: Anthropic.ToolUseBlock): Anthropic.ToolResultBlockParam {
+function dispatchTool(block: Anthropic.ToolUseBlock): DispatchedTool {
+  if (block.name === "submit_triage") {
+    const parsed = submitTriageInput.safeParse(block.input);
+    if (parsed.success) {
+      return { kind: "final", submission: parsed.data };
+    }
+    return {
+      kind: "tool_result",
+      result: {
+        type: "tool_result",
+        tool_use_id: block.id,
+        is_error: true,
+        content: `Invalid submit_triage input: ${parsed.error.message}. Please retry with valid values.`,
+      },
+    };
+  }
+
   const handler = toolHandlers[block.name];
   if (!handler) {
     return {
-      type: "tool_result",
-      tool_use_id: block.id,
-      is_error: true,
-      content: `Unknown tool: ${block.name}. Valid tools: ${Object.keys(toolHandlers).join(", ")}.`,
+      kind: "tool_result",
+      result: {
+        type: "tool_result",
+        tool_use_id: block.id,
+        is_error: true,
+        content: `Unknown tool: ${block.name}. Valid tools: ${[...Object.keys(toolHandlers), "submit_triage"].join(", ")}.`,
+      },
     };
   }
 
   const out = handler(block.input);
   if (!out.ok) {
     return {
-      type: "tool_result",
-      tool_use_id: block.id,
-      is_error: true,
-      content: `Invalid input for ${block.name}: ${out.error}`,
+      kind: "tool_result",
+      result: {
+        type: "tool_result",
+        tool_use_id: block.id,
+        is_error: true,
+        content: `Invalid input for ${block.name}: ${out.error}`,
+      },
     };
   }
 
   return {
-    type: "tool_result",
-    tool_use_id: block.id,
-    content: JSON.stringify(out.result),
+    kind: "tool_result",
+    result: {
+      type: "tool_result",
+      tool_use_id: block.id,
+      content: JSON.stringify(out.result),
+    },
   };
 }
 
@@ -137,23 +195,38 @@ async function triageTicket(ticket: Ticket): Promise<TriageResult> {
 
     switch (response.stop_reason) {
       case "end_turn": {
-        const textBlock = response.content.find((b) => b.type === "text");
-        const text = textBlock && textBlock.type === "text" ? textBlock.text : "";
-        const result = JSON.parse(text);
+        console.error(`Ticket ${ticket.id} ended without calling submit_triage.`);
         return {
           ticket_id: ticket.id,
-          category: result.category,
-          priority: result.priority,
-          needs_human: result.needs_human,
-          draft_reply: result.draft_reply,
+          category: "other",
+          priority: "high",
+          needs_human: true,
+          error: "no_submission",
         };
       }
       case "tool_use": {
         const toolUses = response.content.filter(
           (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
         );
+        const dispatched = toolUses.map(dispatchTool);
+
+        const toolResults: Anthropic.ToolResultBlockParam[] = [];
+        for (const d of dispatched) {
+          if (d.kind === "final") {
+            return {
+              ticket_id: ticket.id,
+              category: d.submission.category,
+              priority: d.submission.priority,
+              needs_human: d.submission.needs_human,
+              ...(d.submission.draft_reply !== undefined ? { draft_reply: d.submission.draft_reply } : {}),
+              ...(d.submission.reasoning !== undefined ? { reasoning: d.submission.reasoning } : {}),
+            };
+          }
+          toolResults.push(d.result);
+        }
+
         messages.push({ role: "assistant", content: response.content });
-        messages.push({ role: "user", content: toolUses.map(dispatchTool) });
+        messages.push({ role: "user", content: toolResults });
         break;
       }
       default: {
