@@ -29,6 +29,23 @@ Return your final answer as JSON.`;
 const lookupCustomerInput = z.object({ customer_id: z.string() });
 const searchKnowledgeBaseInput = z.object({ query: z.string() });
 
+type ToolDispatch = (input: unknown) =>
+  | { ok: true; result: unknown }
+  | { ok: false; error: string };
+
+const toolHandlers: Record<string, ToolDispatch> = {
+  lookup_customer: (input) => {
+    const parsed = lookupCustomerInput.safeParse(input);
+    if (!parsed.success) return { ok: false, error: parsed.error.message };
+    return { ok: true, result: lookupCustomer(parsed.data.customer_id) };
+  },
+  search_knowledge_base: (input) => {
+    const parsed = searchKnowledgeBaseInput.safeParse(input);
+    if (!parsed.success) return { ok: false, error: parsed.error.message };
+    return { ok: true, result: searchKnowledgeBase(parsed.data.query) };
+  },
+};
+
 const tools: Anthropic.Tool[] = [
   {
     name: "lookup_customer",
@@ -73,6 +90,34 @@ function searchKnowledgeBase(query: string) {
   };
 }
 
+function dispatchTool(block: Anthropic.ToolUseBlock): Anthropic.ToolResultBlockParam {
+  const handler = toolHandlers[block.name];
+  if (!handler) {
+    return {
+      type: "tool_result",
+      tool_use_id: block.id,
+      is_error: true,
+      content: `Unknown tool: ${block.name}. Valid tools: ${Object.keys(toolHandlers).join(", ")}.`,
+    };
+  }
+
+  const out = handler(block.input);
+  if (!out.ok) {
+    return {
+      type: "tool_result",
+      tool_use_id: block.id,
+      is_error: true,
+      content: `Invalid input for ${block.name}: ${out.error}`,
+    };
+  }
+
+  return {
+    type: "tool_result",
+    tool_use_id: block.id,
+    content: JSON.stringify(out.result),
+  };
+}
+
 async function triageTicket(ticket: Ticket): Promise<TriageResult> {
   const messages: Anthropic.MessageParam[] = [
     {
@@ -104,51 +149,11 @@ async function triageTicket(ticket: Ticket): Promise<TriageResult> {
         };
       }
       case "tool_use": {
-        const toolUses = response.content.filter((b) => b.type === "tool_use");
+        const toolUses = response.content.filter(
+          (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+        );
         messages.push({ role: "assistant", content: response.content });
-
-        const toolResults: Anthropic.ToolResultBlockParam[] = [];
-        for (const block of toolUses) {
-          if (block.type !== "tool_use") continue;
-
-          if (block.name === "lookup_customer") {
-            const parsed = lookupCustomerInput.safeParse(block.input);
-            if (!parsed.success) {
-              toolResults.push({
-                type: "tool_result",
-                tool_use_id: block.id,
-                is_error: true,
-                content: `Invalid input for lookup_customer: ${parsed.error.message}`,
-              });
-              continue;
-            }
-            const result = lookupCustomer(parsed.data.customer_id);
-            toolResults.push({
-              type: "tool_result",
-              tool_use_id: block.id,
-              content: JSON.stringify(result),
-            });
-          } else if (block.name === "search_knowledge_base") {
-            const parsed = searchKnowledgeBaseInput.safeParse(block.input);
-            if (!parsed.success) {
-              toolResults.push({
-                type: "tool_result",
-                tool_use_id: block.id,
-                is_error: true,
-                content: `Invalid input for search_knowledge_base: ${parsed.error.message}`,
-              });
-              continue;
-            }
-            const result = searchKnowledgeBase(parsed.data.query);
-            toolResults.push({
-              type: "tool_result",
-              tool_use_id: block.id,
-              content: JSON.stringify(result),
-            });
-          }
-        }
-
-        messages.push({ role: "user", content: toolResults });
+        messages.push({ role: "user", content: toolUses.map(dispatchTool) });
         break;
       }
       default: {
