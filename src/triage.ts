@@ -218,6 +218,18 @@ Customer: ${ticket.customer_id}
       messages,
     });
 
+    console.log(
+      JSON.stringify({
+        time: new Date().toISOString(),
+        ticket_id: ticket.id,
+        iter: iter + 1,
+        model: response.model,
+        response_id: response.id,
+        stop_reason: response.stop_reason,
+        ...response.usage,
+      }),
+    );
+
     switch (response.stop_reason) {
       case "end_turn": {
         console.error(`Ticket ${ticket.id} ended without calling submit_triage.`);
@@ -300,7 +312,7 @@ async function main() {
   writeFileSync(RESULTS_JSONL, "");
 
   for (const ticket of tickets) {
-    console.log(`Processing ${ticket.id}...`);
+    console.error(`Processing ${ticket.id}...`);
     let result: TriageResult;
     try {
       result = await triageTicket(ticket);
@@ -321,7 +333,7 @@ async function main() {
   }
 
   writeFileSync("./data/results.json", JSON.stringify(results, null, 2));
-  console.log(`Processed ${results.length} tickets.`);
+  console.error(`Processed ${results.length} tickets.`);
 }
 
 main();
