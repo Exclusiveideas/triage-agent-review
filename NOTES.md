@@ -26,6 +26,8 @@ P1-3: replaced the `while (true)` loop with a counted loop capped at ten iterati
 
 P1-4: replaced the single `if (end_turn)` check with an explicit `switch` on `stop_reason`, per AL-3. Pre-fix, anything that wasn't `end_turn` (max_tokens, pause_turn, refusal, stop_sequence) fell into the tool-dispatch branch and either looped silently or pushed garbage back to the model. The new `default` branch escalates as `needs_human` with `error: "stop_reason:<value>"`, so the failure mode is visible in `results.json` rather than buried in token spend. I escalate on max_tokens rather than retry with a higher cap because hitting 4096 output on a triage classification means the model has gone off-script (probably drafting a long reply), and a human should look. Same logic as the P1-3 overflow path.
 
+P1-5: replaced the `(block.input as any).customer_id` casts with Zod schemas and a `safeParse` per tool call before dispatch. The cast was hiding two real failure modes: a hard crash if the model returned a malformed shape (which would have killed the batch pre-P1-8), and worse, a silent fallback if the model omitted the field entirely. JS evaluates `fixtures[undefined]` to `undefined`, so the `||` branch returned the "unknown customer" stub and the model would happily triage on phantom data with no signal that the lookup had failed. On parse failure the loop now pushes a `tool_result` with `is_error: true` so the model sees the structured failure and can retry within the iteration cap. Each tool input is defined twice, once as JSON Schema in the SDK `tools` array and once as a Zod schema; manual sync at this size is fine, and if P1-7's `submit_triage` schema makes derivation worthwhile I will switch then.
+
 ### Phase 2: quality and hygiene
 
 (in progress)

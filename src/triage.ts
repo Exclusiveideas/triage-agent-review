@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync, writeFileSync } from "fs";
+import { z } from "zod";
 import { Ticket, TriageResult } from "./types.js";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -23,6 +24,10 @@ Use the lookup_customer tool to check the customer's plan and history before dec
 Enterprise customers should generally get higher priority than free-tier customers.
 
 Return your final answer as JSON.`;
+
+// Keep these in sync with the input_schema fields in `tools` below.
+const lookupCustomerInput = z.object({ customer_id: z.string() });
+const searchKnowledgeBaseInput = z.object({ query: z.string() });
 
 const tools: Anthropic.Tool[] = [
   {
@@ -105,17 +110,42 @@ async function triageTicket(ticket: Ticket): Promise<TriageResult> {
         const toolResults: Anthropic.ToolResultBlockParam[] = [];
         for (const block of toolUses) {
           if (block.type !== "tool_use") continue;
-          let result: any;
+
           if (block.name === "lookup_customer") {
-            result = lookupCustomer((block.input as any).customer_id);
+            const parsed = lookupCustomerInput.safeParse(block.input);
+            if (!parsed.success) {
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                is_error: true,
+                content: `Invalid input for lookup_customer: ${parsed.error.message}`,
+              });
+              continue;
+            }
+            const result = lookupCustomer(parsed.data.customer_id);
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify(result),
+            });
           } else if (block.name === "search_knowledge_base") {
-            result = searchKnowledgeBase((block.input as any).query);
+            const parsed = searchKnowledgeBaseInput.safeParse(block.input);
+            if (!parsed.success) {
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                is_error: true,
+                content: `Invalid input for search_knowledge_base: ${parsed.error.message}`,
+              });
+              continue;
+            }
+            const result = searchKnowledgeBase(parsed.data.query);
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify(result),
+            });
           }
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
-            content: JSON.stringify(result),
-          });
         }
 
         messages.push({ role: "user", content: toolResults });
