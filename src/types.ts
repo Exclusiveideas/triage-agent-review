@@ -18,12 +18,13 @@ export interface Ticket {
   created_at: string;
 }
 
-export interface TriageResult {
+interface TriageResultBase {
   ticket_id: string;
   category: Category;
   priority: Priority;
-  needs_human: boolean;
-  draft_reply?: string;
   reasoning?: string;
-  error?: string;
 }
+
+export type TriageResult =
+  | (TriageResultBase & { needs_human: false; draft_reply: string })
+  | (TriageResultBase & { needs_human: true; error?: string });

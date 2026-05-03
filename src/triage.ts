@@ -30,13 +30,21 @@ Call submit_triage exactly once when you have all the information you need to fi
 // Keep these in sync with the input_schema fields in `tools` below.
 const lookupCustomerInput = z.object({ customer_id: z.string() });
 const searchKnowledgeBaseInput = z.object({ query: z.string() });
-const submitTriageInput = z.object({
-  category: z.enum(CATEGORIES),
-  priority: z.enum(PRIORITIES),
-  needs_human: z.boolean(),
-  draft_reply: z.string().optional(),
-  reasoning: z.string().optional(),
-});
+const submitTriageInput = z.discriminatedUnion("needs_human", [
+  z.object({
+    needs_human: z.literal(false),
+    category: z.enum(CATEGORIES),
+    priority: z.enum(PRIORITIES),
+    draft_reply: z.string().min(1),
+    reasoning: z.string().optional(),
+  }),
+  z.object({
+    needs_human: z.literal(true),
+    category: z.enum(CATEGORIES),
+    priority: z.enum(PRIORITIES),
+    reasoning: z.string().optional(),
+  }),
+]);
 
 type ToolDispatch = (input: unknown) =>
   | { ok: true; result: unknown }
@@ -85,7 +93,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "submit_triage",
     description:
-      "Submit the final triage decision for the ticket. Call this exactly once when you have all the information you need.",
+      "Submit the final triage decision for the ticket. Call this exactly once when you have all the information you need. Include draft_reply when needs_human is false; omit it when needs_human is true.",
     input_schema: {
       type: "object",
       properties: {
@@ -94,7 +102,8 @@ const tools: Anthropic.Tool[] = [
         needs_human: { type: "boolean" },
         draft_reply: {
           type: "string",
-          description: "Customer-facing reply text. Required when needs_human is false.",
+          description:
+            "Customer-facing reply text. Required (non-empty) when needs_human is false; omit when needs_human is true.",
         },
         reasoning: {
           type: "string",
@@ -229,14 +238,25 @@ Customer: ${ticket.customer_id}
         const toolResults: Anthropic.ToolResultBlockParam[] = [];
         for (const d of dispatched) {
           if (d.kind === "final") {
-            return {
-              ticket_id: ticket.id,
-              category: d.submission.category,
-              priority: d.submission.priority,
-              needs_human: d.submission.needs_human,
-              ...(d.submission.draft_reply !== undefined ? { draft_reply: d.submission.draft_reply } : {}),
-              ...(d.submission.reasoning !== undefined ? { reasoning: d.submission.reasoning } : {}),
-            };
+            const sub = d.submission;
+            const reasoning =
+              sub.reasoning !== undefined ? { reasoning: sub.reasoning } : {};
+            return sub.needs_human
+              ? {
+                  ticket_id: ticket.id,
+                  category: sub.category,
+                  priority: sub.priority,
+                  needs_human: true,
+                  ...reasoning,
+                }
+              : {
+                  ticket_id: ticket.id,
+                  category: sub.category,
+                  priority: sub.priority,
+                  needs_human: false,
+                  draft_reply: sub.draft_reply,
+                  ...reasoning,
+                };
           }
           toolResults.push(d.result);
         }
