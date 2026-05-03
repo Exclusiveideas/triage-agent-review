@@ -24,6 +24,8 @@ P1-2: added an explicit guard for `ANTHROPIC_API_KEY` at startup. The SDK accept
 
 P1-3: replaced the `while (true)` loop with a counted loop capped at ten iterations. AL-1 calls this out as unshippable and the math at 5,000/day says even a small rate of stuck loops is real money: on Sonnet 4.6 with `max_tokens: 4096`, a stuck ticket can burn ~$0.70 in output before something else kills it, against ~$0.012 for a healthy one. On overflow the function returns a structured `TriageResult` with `needs_human: true` and a new optional `error` field (`"max_iterations_exceeded"`) so the team can grep `results.json` for the failure mode rather than infer it from the absence of a draft reply. The cap value of ten is generous for a triage workload (the healthy path needs three turns at most). The overflow `priority: "high"` is a placeholder I have flagged for the team rather than choose unilaterally.
 
+P1-4: replaced the single `if (end_turn)` check with an explicit `switch` on `stop_reason`, per AL-3. Pre-fix, anything that wasn't `end_turn` (max_tokens, pause_turn, refusal, stop_sequence) fell into the tool-dispatch branch and either looped silently or pushed garbage back to the model. The new `default` branch escalates as `needs_human` with `error: "stop_reason:<value>"`, so the failure mode is visible in `results.json` rather than buried in token spend. I escalate on max_tokens rather than retry with a higher cap because hitting 4096 output on a triage classification means the model has gone off-script (probably drafting a long reply), and a human should look. Same logic as the P1-3 overflow path.
+
 ### Phase 2: quality and hygiene
 
 (in progress)

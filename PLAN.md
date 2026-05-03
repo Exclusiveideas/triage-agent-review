@@ -185,6 +185,7 @@
 ### T-5 — Max-iteration overflow path (covers P1-3)
 ### T-6 — Final-answer recovery: invalid → retry → escalate (covers P1-7)
 ### T-7 — Per-ticket failure isolation (covers P1-8)
+### T-8 — Stop-reason switch coverage (covers P1-4)
 
 ---
 

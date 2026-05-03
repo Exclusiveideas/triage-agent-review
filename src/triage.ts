@@ -85,39 +85,55 @@ async function triageTicket(ticket: Ticket): Promise<TriageResult> {
       messages,
     });
 
-    if (response.stop_reason === "end_turn") {
-      const textBlock = response.content.find((b) => b.type === "text");
-      const text = textBlock && textBlock.type === "text" ? textBlock.text : "";
-      const result = JSON.parse(text);
-      return {
-        ticket_id: ticket.id,
-        category: result.category,
-        priority: result.priority,
-        needs_human: result.needs_human,
-        draft_reply: result.draft_reply,
-      };
-    }
-
-    const toolUses = response.content.filter((b) => b.type === "tool_use");
-    messages.push({ role: "assistant", content: response.content });
-
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const block of toolUses) {
-      if (block.type !== "tool_use") continue;
-      let result: any;
-      if (block.name === "lookup_customer") {
-        result = lookupCustomer((block.input as any).customer_id);
-      } else if (block.name === "search_knowledge_base") {
-        result = searchKnowledgeBase((block.input as any).query);
+    switch (response.stop_reason) {
+      case "end_turn": {
+        const textBlock = response.content.find((b) => b.type === "text");
+        const text = textBlock && textBlock.type === "text" ? textBlock.text : "";
+        const result = JSON.parse(text);
+        return {
+          ticket_id: ticket.id,
+          category: result.category,
+          priority: result.priority,
+          needs_human: result.needs_human,
+          draft_reply: result.draft_reply,
+        };
       }
-      toolResults.push({
-        type: "tool_result",
-        tool_use_id: block.id,
-        content: JSON.stringify(result),
-      });
-    }
+      case "tool_use": {
+        const toolUses = response.content.filter((b) => b.type === "tool_use");
+        messages.push({ role: "assistant", content: response.content });
 
-    messages.push({ role: "user", content: toolResults });
+        const toolResults: Anthropic.ToolResultBlockParam[] = [];
+        for (const block of toolUses) {
+          if (block.type !== "tool_use") continue;
+          let result: any;
+          if (block.name === "lookup_customer") {
+            result = lookupCustomer((block.input as any).customer_id);
+          } else if (block.name === "search_knowledge_base") {
+            result = searchKnowledgeBase((block.input as any).query);
+          }
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content: JSON.stringify(result),
+          });
+        }
+
+        messages.push({ role: "user", content: toolResults });
+        break;
+      }
+      default: {
+        console.error(
+          `Ticket ${ticket.id} stopped with reason: ${response.stop_reason}.`,
+        );
+        return {
+          ticket_id: ticket.id,
+          category: "other",
+          priority: "high",
+          needs_human: true,
+          error: `stop_reason:${response.stop_reason ?? "null"}`,
+        };
+      }
+    }
   }
 
   console.error(`Ticket ${ticket.id} exceeded ${MAX_ITERATIONS} iterations.`);
