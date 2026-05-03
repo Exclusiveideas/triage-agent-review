@@ -8,7 +8,7 @@ if (!apiKey) {
   console.error("ANTHROPIC_API_KEY environment variable is required.");
   process.exit(1);
 }
-const client = new Anthropic({ apiKey });
+const client = new Anthropic({ apiKey, timeout: 60_000 });
 
 const MAX_ITERATIONS = 10;
 
