@@ -12,4 +12,5 @@ export interface TriageResult {
   priority: "low" | "medium" | "high" | "urgent";
   needs_human: boolean;
   draft_reply?: string;
+  error?: string;
 }

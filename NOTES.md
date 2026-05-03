@@ -22,6 +22,8 @@ P1-1: swapped the model from the legacy `claude-opus-4-5` alias to `claude-sonne
 
 P1-2: added an explicit guard for `ANTHROPIC_API_KEY` at startup. The SDK accepts a `string | null | undefined` apiKey and only fails deep inside the first request, which is exactly the kind of slow-failing config bug that wastes time on first run and looks like a network problem in production. A clean `console.error` plus `process.exit(1)` before any network call or file read is the cheap fix the rule (C-6) was asking for.
 
+P1-3: replaced the `while (true)` loop with a counted loop capped at ten iterations. AL-1 calls this out as unshippable and the math at 5,000/day says even a small rate of stuck loops is real money: on Sonnet 4.6 with `max_tokens: 4096`, a stuck ticket can burn ~$0.70 in output before something else kills it, against ~$0.012 for a healthy one. On overflow the function returns a structured `TriageResult` with `needs_human: true` and a new optional `error` field (`"max_iterations_exceeded"`) so the team can grep `results.json` for the failure mode rather than infer it from the absence of a draft reply. The cap value of ten is generous for a triage workload (the healthy path needs three turns at most). The overflow `priority: "high"` is a placeholder I have flagged for the team rather than choose unilaterally.
+
 ### Phase 2: quality and hygiene
 
 (in progress)
@@ -40,7 +42,7 @@ Nothing scoped out yet. Items will land here as I make those calls.
 
 ## Product / team decisions
 
-Questions I'd want to raise with the team before changing behaviour unilaterally. None yet; I expect a few during Phase 1, for example how to handle customer IDs the lookup tool doesn't recognise, the policy when the model returns a malformed final answer (retry, escalate, or both), and whether to default to a smaller model for triage with escalation to a larger one.
+Questions I'd want to raise with the team before changing behaviour unilaterally. The ones I expect to surface across Phase 1 are how to handle customer IDs the lookup tool doesn't recognise, the policy when the model returns a malformed final answer (retry, escalate, or both), and whether to default to a smaller model for triage with escalation to a larger one. P1-1 made the latter concrete: Sonnet 4.6 is the safe default but Haiku 4.5 is roughly a third of the cost again, and worth running an offline eval on (including `tkt_1007`) before swapping. P1-3 added one more: when the agent fails to converge within the iteration cap and routes the ticket to a human, what priority should the operations team see it at? `high` is my current placeholder; `urgent` would say look now, `medium` would say do not pollute the urgent queue with infrastructure failures.
 
 ## Tools I used
 

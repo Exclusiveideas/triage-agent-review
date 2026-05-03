@@ -9,6 +9,8 @@ if (!apiKey) {
 }
 const client = new Anthropic({ apiKey });
 
+const MAX_ITERATIONS = 10;
+
 const SYSTEM_PROMPT = `You are a support ticket triage agent for a B2B SaaS company.
 
 For each ticket, you must:
@@ -74,7 +76,7 @@ async function triageTicket(ticket: Ticket): Promise<TriageResult> {
     },
   ];
 
-  while (true) {
+  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 4096,
@@ -117,6 +119,15 @@ async function triageTicket(ticket: Ticket): Promise<TriageResult> {
 
     messages.push({ role: "user", content: toolResults });
   }
+
+  console.error(`Ticket ${ticket.id} exceeded ${MAX_ITERATIONS} iterations.`);
+  return {
+    ticket_id: ticket.id,
+    category: "other",
+    priority: "high",
+    needs_human: true,
+    error: "max_iterations_exceeded",
+  };
 }
 
 async function main() {
