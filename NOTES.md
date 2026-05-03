@@ -50,7 +50,7 @@ P2-4: set `timeout: 60_000` on the `Anthropic` client. The SDK default is 10 min
 
 ### Phase 3: scale
 
-(in progress)
+P3-1: changed the per-turn tool dispatch from `toolUses.map(dispatchTool)` to `await Promise.all(toolUses.map(dispatchTool))` and made `dispatchTool` async. Honest framing of what this buys today: nothing. The handlers are sync mocks, so the lookups still run serially during `.map`, and `Promise.all` resolves immediately. The point is the seam: the moment any handler becomes a real DB call (`lookup_customer` is the obvious one — that's the entire premise of "scale to 5,000/day"), every multi-tool turn parallelises without anyone touching the loop, where today the same migration would also require this refactor. Widened `ToolDispatch` to return `T | Promise<T>` rather than forcing handlers to `async (input) => Promise<T>`, so today's mocks stay honest about being sync (no fake async) and the production migration is "drop `async`/`await` into the handler body" with zero change to types or call site. Small accounting edge case worth naming: if the model emits `submit_triage` alongside lookups in the same turn, the lookups now execute before being discarded by the early-return on `final` — under sync mocks free, under real DB calls a small wasted lookup that's nowhere near worth a `Promise.race` or pre-scan to avoid. Failure semantics unchanged: a thrown handler still rejects the `Promise.all`, P1-8 still catches it as `triage_threw:...`, batch still continues. Skipped the unit test ahead of vitest setup; will be picked up in Phase 4.
 
 ### Phase 4: tests
 

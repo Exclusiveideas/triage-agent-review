@@ -46,9 +46,11 @@ const submitTriageInput = z.discriminatedUnion("needs_human", [
   }),
 ]);
 
-type ToolDispatch = (input: unknown) =>
+type ToolDispatchResult =
   | { ok: true; result: unknown }
   | { ok: false; error: string };
+
+type ToolDispatch = (input: unknown) => ToolDispatchResult | Promise<ToolDispatchResult>;
 
 type DispatchedTool =
   | { kind: "tool_result"; result: Anthropic.ToolResultBlockParam }
@@ -134,7 +136,7 @@ function searchKnowledgeBase(query: string) {
   };
 }
 
-function dispatchTool(block: Anthropic.ToolUseBlock): DispatchedTool {
+async function dispatchTool(block: Anthropic.ToolUseBlock): Promise<DispatchedTool> {
   if (block.name === "submit_triage") {
     const parsed = submitTriageInput.safeParse(block.input);
     if (parsed.success) {
@@ -164,7 +166,7 @@ function dispatchTool(block: Anthropic.ToolUseBlock): DispatchedTool {
     };
   }
 
-  const out = handler(block.input);
+  const out = await handler(block.input);
   if (!out.ok) {
     return {
       kind: "tool_result",
@@ -245,7 +247,7 @@ Customer: ${ticket.customer_id}
         const toolUses = response.content.filter(
           (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
         );
-        const dispatched = toolUses.map(dispatchTool);
+        const dispatched = await Promise.all(toolUses.map(dispatchTool));
 
         const toolResults: Anthropic.ToolResultBlockParam[] = [];
         for (const d of dispatched) {
