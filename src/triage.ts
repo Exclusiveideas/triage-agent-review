@@ -69,7 +69,7 @@ const toolHandlers: Record<string, ToolDispatch> = {
   },
 };
 
-const tools: Anthropic.Tool[] = [
+const tools: Anthropic.Beta.PromptCaching.PromptCachingBetaTool[] = [
   {
     name: "lookup_customer",
     description: "Look up a customer's plan tier and recent ticket history",
@@ -114,6 +114,7 @@ const tools: Anthropic.Tool[] = [
       },
       required: ["category", "priority", "needs_human"],
     },
+    cache_control: { type: "ephemeral" },
   },
 ];
 
@@ -211,11 +212,13 @@ Customer: ${ticket.customer_id}
   ];
 
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    const response = await client.messages.create({
+    const response = await client.beta.promptCaching.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 4096,
       temperature: 0,
-      system: SYSTEM_PROMPT,
+      system: [
+        { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+      ],
       tools,
       messages,
     });
