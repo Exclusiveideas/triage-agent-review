@@ -121,7 +121,7 @@ const tools: Anthropic.Beta.PromptCaching.PromptCachingBetaTool[] = [
 
 // Mocked — in real life these hit a database
 function lookupCustomer(customerId: string) {
-  const fixtures: Record<string, any> = {
+  const fixtures: Record<string, { plan: string; open_tickets: number; mrr: number }> = {
     cust_001: { plan: "enterprise", open_tickets: 2, mrr: 4500 },
     cust_002: { plan: "free", open_tickets: 0, mrr: 0 },
     cust_003: { plan: "pro", open_tickets: 1, mrr: 199 },
@@ -195,6 +195,10 @@ function escapeDelimiterTags(s: string): string {
   return s.replace(/<\/?ticket_(subject|body)>/gi, "[escaped-tag]");
 }
 
+function failureResult(ticket_id: string, error: string): TriageResult {
+  return { ticket_id, category: "other", priority: "high", needs_human: true, error };
+}
+
 async function triageTicket(ticket: Ticket): Promise<TriageResult> {
   const safeSubject = escapeDelimiterTags(ticket.subject);
   const safeBody = escapeDelimiterTags(ticket.body);
@@ -239,13 +243,7 @@ Customer: ${ticket.customer_id}
     switch (response.stop_reason) {
       case "end_turn": {
         console.error(`Ticket ${ticket.id} ended without calling submit_triage.`);
-        return {
-          ticket_id: ticket.id,
-          category: "other",
-          priority: "high",
-          needs_human: true,
-          error: "no_submission",
-        };
+        return failureResult(ticket.id, "no_submission");
       }
       case "tool_use": {
         const toolUses = response.content.filter(
@@ -287,25 +285,16 @@ Customer: ${ticket.customer_id}
         console.error(
           `Ticket ${ticket.id} stopped with reason: ${response.stop_reason}.`,
         );
-        return {
-          ticket_id: ticket.id,
-          category: "other",
-          priority: "high",
-          needs_human: true,
-          error: `stop_reason:${response.stop_reason ?? "null"}`,
-        };
+        return failureResult(
+          ticket.id,
+          `stop_reason:${response.stop_reason ?? "null"}`,
+        );
       }
     }
   }
 
   console.error(`Ticket ${ticket.id} exceeded ${MAX_ITERATIONS} iterations.`);
-  return {
-    ticket_id: ticket.id,
-    category: "other",
-    priority: "high",
-    needs_human: true,
-    error: "max_iterations_exceeded",
-  };
+  return failureResult(ticket.id, "max_iterations_exceeded");
 }
 
 async function main() {
@@ -331,13 +320,7 @@ async function main() {
         const raw = err instanceof Error ? err.message : String(err);
         const message = raw.length > 500 ? raw.slice(0, 500) + "..." : raw;
         console.error(`Ticket ${ticket.id} failed: ${message}`);
-        result = {
-          ticket_id: ticket.id,
-          category: "other",
-          priority: "high",
-          needs_human: true,
-          error: `triage_threw:${message}`,
-        };
+        result = failureResult(ticket.id, `triage_threw:${message}`);
       }
       results[i] = result;
       appendFileSync(RESULTS_JSONL, JSON.stringify(result) + "\n");
