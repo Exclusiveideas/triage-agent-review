@@ -19,7 +19,7 @@
 - IDs are `<phase>-<n>`. Stable; commits and NOTES.md reference them.
 - A fix that surfaces a *new* issue gets added to the bottom of the appropriate phase. Don't grow the current fix.
 - Skipping an item is allowed but costs one sentence in NOTES.md explaining why.
-- "Test" means a unit test if it earns its place (T-1 in §11 of CLAUDE.md). Otherwise a manual check or reasoning — say so explicitly.
+- "Test" means a unit test if it earns its place. Otherwise a manual check or reasoning — say so explicitly.
 
 ---
 
@@ -41,7 +41,7 @@
 
 ### S-3 — Add `tsconfig.json` with `strict: true`
 - **Why**: G-1 gate. Surfaces every `as any` we'll close in Phase 1.
-- **Files**: `tsconfig.json` with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` per CLAUDE.md §1.
+- **Files**: `tsconfig.json` with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`.
 - **Verify**: `npx tsc --noEmit` runs and fails loudly on the existing `as any` usages — that's expected and good.
 - **Test**: note the baseline error count; it goes to zero by end of Phase 1.
 - **Status:** done.
